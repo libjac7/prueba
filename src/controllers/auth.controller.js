@@ -17,29 +17,36 @@ export const login = async (req, res) => {
     }
 
     try {
-        //  BUSQUEDA EN BASE DE DATOS
-        const [rows] = await db.query('CALL sp_login_usuario(?)', [username.trim()]);
+        // BUSQUEDA EN BASE DE DATOS
+        const query = `
+            SELECT
+                u.id_emp,
+                u.id_us, 
+                u.pass_us, 
+                u.token_version, 
+                e.name_emp, 
+                e.ape_emp, 
+                r.name_rol,
+                u.es_password_defecto
+            FROM usuarios u
+            INNER JOIN roles r ON u.id_rol = r.id_rol
+            INNER JOIN empleados e ON u.id_emp = e.id_emp
+            WHERE u.name_us = ? AND u.id_est = (SELECT id_est FROM estados WHERE name_est = 'activo' LIMIT 1)
+        `;
+        
+        const [usuarios] = await db.query(query, [username.trim()]);
 
-        // Valida si el SP retornó registros en la primera posición del array
-        if (!rows || rows[0].length === 0) {
-            console.warn(`⚠️ LOGIN FALLIDO: El usuario [${username.trim()}] no existe.`);
+        if (usuarios.length === 0) {
+            console.warn(`⚠️ LOGIN FALLIDO: El usuario [${username.trim()}] no existe o está inactivo.`);
             return res.status(401).json({ 
                 data: { code: 401, message: "Credenciales inválidas o usuario inactivo." } 
             });
         }
 
-        const usuarioDB = rows[0][0];
+        const usuario = usuarios[0];
 
-        // Validar si el usuario está activo
-        if (usuarioDB.id_est_usuario !== 1 && usuarioDB.estado_empleado === 'Inactivo') {
-            console.warn(`⚠️ LOGIN FALLIDO: El usuario [${username.trim()}] se encuentra inactivo.`);
-            return res.status(401).json({ 
-                data: { code: 401, message: "Credenciales inválidas o usuario inactivo." } 
-            });
-        }
-
-        // Verifica contraseña
-        const coinciden = await bcrypt.compare(password.trim(), usuarioDB.pass_us);
+        // ERIFICACIÓN DE CONTRASEÑA
+        const coinciden = await bcrypt.compare(password.trim(), usuario.pass_us);
         if (!coinciden) {
             console.warn(`⚠️ LOGIN FALLIDO: Contraseña incorrecta para el usuario [${username.trim()}].`);
             return res.status(401).json({ 
@@ -47,31 +54,32 @@ export const login = async (req, res) => {
             });
         }
 
-        // Datos para jwt
+        // DATOS DE JWT
         const payload = {
-            id_emp: usuarioDB.id_emp,
-            id_usuario: usuarioDB.id_us,
-            rol: usuarioDB.name_rol
+            id_emp: usuario.id_emp,
+            id_usuario: usuario.id_us,
+            rol: usuario.name_rol,
+            version: usuario.token_version
         };
 
-        // Crea token con vigencia de 1 hora
+        // CREA EL TOKEN CON VIGENCIA DE 1H
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-        console.log(`✅ LOGIN EXITOSO: El usuario [${usuarioDB.id_us}] inició sesión.`);
+        console.log(`✅ LOGIN EXITOSO: El usuario [${usuario.id_us}] inició sesión. Token Versión: [${usuario.token_version}].`);
 
-        // Respuesta segun datos extraidos en el sp
+        // ESPUESTA 
         return res.status(200).json({
             data: {
                 code: 200,
                 message: "Login exitoso.",
                 token,
                 usuario: {
-                    id_emp: usuarioDB.id_emp, 
-                    id: usuarioDB.id_us,
-                    rol: usuarioDB.name_rol,
-                    nombre: usuarioDB.name_emp,
-                    apellido: usuarioDB.ape_emp,
-                    es_password_defecto: usuarioDB.es_password_defecto 
+                    cod: usuario.id_emp,
+                    id: usuario.id_us,
+                    rol: usuario.name_rol,
+                    nombre: usuario.name_emp,
+                    apellido: usuario.ape_emp,
+                    es_password_defecto: usuario.es_password_defecto
                 }
             }
         });
