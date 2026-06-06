@@ -19,7 +19,8 @@ export const login = async (req, res) => {
     try {
         // 2. BUSQUEDA EN BASE DE DATOS: Relación mediante id_emp con la tabla empleados
         const query = `
-            SELECT 
+            SELECT
+                u.id_emp,
                 u.id_us, 
                 u.pass_us, 
                 u.token_version, 
@@ -54,6 +55,7 @@ export const login = async (req, res) => {
 
         // 4. GENERACIÓN DEL PAYLOAD PARA EL JWT
         const payload = {
+            id_emp: usuario.id_emp,
             id_usuario: usuario.id_us,
             rol: usuario.name_rol,
             version: usuario.token_version
@@ -70,7 +72,8 @@ export const login = async (req, res) => {
                 code: 200,
                 message: "Login exitoso.",
                 token,
-                usuario: { 
+                usuario: {
+                    id_emp: usuario.id_emp,
                     id: usuario.id_us, 
                     rol: usuario.name_rol,
                     nombre: usuario.name_emp,
